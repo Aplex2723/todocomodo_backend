@@ -3,26 +3,26 @@ from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identi
 from .services import register_user, login_user, get_user_licence_key, save_user_licence_key, get_chatgpt_response
 
 def register_routes(app):
-    @app.route('/register', methods=['POST'])
+    @app.route('/api/register', methods=['POST'])
     def register():
         data = request.get_json()
         response, status = register_user(data)
         return jsonify(response), status
 
-    @app.route('/login', methods=['POST'])
+    @app.route('/api/login', methods=['POST'])
     def login():
         data = request.get_json()
         response, status = login_user(data)
         return jsonify(response), status
 
-    @app.route('/get_licence_key', methods=['GET'])
+    @app.route('/api/get_licence_key', methods=['GET'])
     @jwt_required()
     def get_licence_key():
         current_user = get_jwt_identity()
         response, status = get_user_licence_key(current_user)
         return jsonify(response), status
 
-    @app.route('/save_licence_key', methods=['POST'])
+    @app.route('/api/save_licence_key', methods=['POST'])
     @jwt_required()
     def save_licence_key():
         current_user = get_jwt_identity()
@@ -35,7 +35,7 @@ def register_routes(app):
         response, status = save_user_licence_key(current_user, licence_key)
         return jsonify(response), status
 
-    @app.route('/chat', methods=['POST'])
+    @app.route('/api/chat', methods=['POST'])
     @jwt_required()
     def chat():
         current_user = get_jwt_identity()
