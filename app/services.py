@@ -1,9 +1,11 @@
 import logging
 import requests
 from datetime import datetime, timedelta
+import uuid
+import json
 
 from azure.data.tables import TableServiceClient
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, create_refresh_token
 
 from .utils import hash_password, verify_password
 from .config import Config
@@ -19,6 +21,7 @@ table_service_client = TableServiceClient.from_connection_string(conn_str=Config
 # Create user and session tables if not exist
 table_client = table_service_client.create_table_if_not_exists(Config.TABLE_NAME)
 sessions_table_client = table_service_client.create_table_if_not_exists(Config.SESSIONS_TABLE_NAME)
+chat_table_client = table_service_client.create_table_if_not_exists(Config.CHAT_TABLE_NAME)
 
 def register_user(data):
     username = data.get('username')
@@ -66,8 +69,9 @@ def register_user(data):
         return {'error': f"Error al registrar el usuario: {str(e)}"}, 500
 
 def login_user(data):
-    identifier = data.get('identifier')  # Can be email or username
+    identifier = data.get('identifier')
     password = data.get('password')
+    logging.info(f"Getting the user by identifier {identifier}")
 
     if not identifier or not password:
         logging.error('Login failed: Missing identifier or password')
@@ -89,20 +93,17 @@ def login_user(data):
             logging.warning(f'User {identifier} not found')
             return {'error': 'Usuario no encontrado'}, 404
 
-    # Verify password
     if verify_password(password, user_entity['password']):
-        ini_time_for_now = datetime.now()
         expiration_date = timedelta(days=30)
-        jwt_expiration_date = ini_time_for_now + expiration_date
-
-        logging.info(f'User {identifier} login successful, token expires at {jwt_expiration_date}')
-
         access_token = create_access_token(identity=user_entity['RowKey'], expires_delta=expiration_date)
-        return {'token': access_token}, 200
+        refresh_token = create_refresh_token(identity=user_entity['RowKey'])  # Generate refresh token
+
+        logging.info(f'User {identifier} login successful, tokens issued')
+        return {'token': access_token, 'refreshToken': refresh_token}, 200
     else:
         logging.warning(f'Incorrect password for user {identifier}')
-        return {'error': 'Contraseña incorrecta'}, 401
-    
+        return {'error': 'Contraseña incorrecta'}, 401   
+
 def get_user_licence_key(username):
     table_client = table_service_client.get_table_client(Config.TABLE_NAME)
     
@@ -127,6 +128,35 @@ def save_user_licence_key(username, licence_key):
     except Exception as e:
         logging.error(f'Error saving licence key for user {username}: {str(e)}')
         return {'error': f"No se pudo guardar la clave: {str(e)}"}, 500
+
+# Function to retrieve messages from Azure Table Storage by session ID
+def get_conversation_by_user(username):
+    table_client = table_service_client.get_table_client(Config.TABLE_NAME)
+    try:
+        user_entity = table_client.get_entity(partition_key='users', row_key=username)
+        session_id = user_entity.get('last_session_id', '')
+        table_client = table_service_client.get_table_client(table_name=Config.CHAT_TABLE_NAME)
+        entities = table_client.query_entities(f"PartitionKey eq '{session_id}'")
+        logging.info(f'We were able to get {username} user messages')
+        return [{"user_message": e["UserMessage"], "bot_response": e["BotResponse"], "timestamp": e.get("Timestamp"), "metadata": e.get("metadata")}
+                for e in entities], 200
+    except Exception as e:
+        logging.error(f'Error getting messages for {username}: {str(e)}')
+        return {'error': f"No se pudo obteneer los mensajes: {str(e)}"}, 500
+
+
+def save_message_to_table(session_id, user_message, bot_response, metadata = None):
+    table_client = table_service_client.get_table_client(table_name=Config.CHAT_TABLE_NAME)
+    entity = {}
+    entity["PartitionKey"] = session_id  # Group by session ID
+    entity["RowKey"] = str(uuid.uuid4())  # Unique identifier for each row
+    entity["UserMessage"] = user_message
+    entity["BotResponse"] = bot_response
+    entity["metadata"] = metadata
+    entity["Timestamp"] = datetime.utcnow()
+
+    # Insert entity into table
+    table_client.upsert_entity(entity)
 
 def get_chatgpt_response(licence_key, user_message):
     try:
@@ -154,13 +184,38 @@ def get_chatgpt_response(licence_key, user_message):
             payload['overrideConfig'] = {"sessionId": session_id}
 
         def query(payload):
+            logging.info(f"Sending data to Flowise: {payload}")
             response = requests.post(API_URL, headers=headers, json=payload)
+            if response.status_code > 204:
+                logging.error(f"Error while calling Flowise API - Response Code {response.status_code}\n\n{response.reason}")
+            logging.info(f"Response from Flowise API: {response}")
             return response.json()
 
         logging.info('Sending request to Flowise API')
         response = query(payload)
         agent_response = response.get("text")
         session_id = response.get("sessionId")
+        search_kb_tool_name = "Propertie_Link_manager"
+        logging.info(f"Response text: {agent_response}; Session ID: {session_id}")
+
+        # Safely extracting the metadata from sourceDocuments
+        agent_reasoning = response.get("agentReasoning", [])
+        logging.info(f"Agent Reasoning: {agent_reasoning}")
+
+        # Initialize the metadata variable
+        all_source_document_metadata = []
+
+        # Iterate through each agent reasoning entry
+        try:
+            for tool in agent_reasoning:
+                if tool.get("agentName") == search_kb_tool_name:
+                    source_documents = tool.get("sourceDocuments", [])
+                    for doc in source_documents:
+                        metadata = doc.get("metadata")
+                        if metadata:
+                            all_source_document_metadata.append(metadata)
+        except Exception as e:
+            logging.error(f"Unable to get metadata from agent reasoning")
 
         if session_id:
             logging.info(f"Saving session ID {session_id} in data table and updating user")
@@ -176,8 +231,17 @@ def get_chatgpt_response(licence_key, user_message):
             table_client.upsert_entity(user_entity)
             sessions_client.upsert_entity(session_entity)
             
+            try:
+                logging.info("Saving message into table with same session_id")
+                save_message_to_table(session_id, user_message, agent_response, json.dumps(all_source_document_metadata) or None)
+            except Exception as e:
+                logging.error(f"Unable to save message in storage \n{e}")
+            
         logging.info(f'ChatGPT response retrieved successfully for licence key {licence_key}')
-        return {"response": agent_response}, 202
+        return {
+            "response": agent_response,
+            "metadata": all_source_document_metadata
+                }, 202
 
     except Exception as e:
         logging.error(f'Failed to get response from ChatGPT: {str(e)}')

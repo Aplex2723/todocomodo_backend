@@ -12,3 +12,4 @@ class Config:
     TABLE_NAME = os.getenv("TABLE_NAME")
     JWT_SECRET_KEY = SECRET_KEY
     FLOWISE_URL = os.getenv("FLOWISE_URL")
+    CHAT_TABLE_NAME = os.getenv("CHAT_TABLE_NAME")

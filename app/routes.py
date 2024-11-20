@@ -1,6 +1,6 @@
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identity
-from .services import register_user, login_user, get_user_licence_key, save_user_licence_key, get_chatgpt_response
+from .services import register_user, login_user, get_user_licence_key, save_user_licence_key, get_chatgpt_response, get_conversation_by_user
 
 def register_routes(app):
     @app.route('/api/register', methods=['POST'])
@@ -14,6 +14,13 @@ def register_routes(app):
         data = request.get_json()
         response, status = login_user(data)
         return jsonify(response), status
+    
+    @app.route('/api/refresh-token', methods=['POST'])
+    @jwt_required(refresh=True)
+    def refresh_token():
+        current_user = get_jwt_identity()
+        new_token = create_access_token(identity=current_user)
+        return jsonify({'token': new_token}), 200
 
     @app.route('/api/get_licence_key', methods=['GET'])
     @jwt_required()
@@ -59,3 +66,11 @@ def register_routes(app):
         # Generar respuesta del chat usando LangChain
         chat_response, status = get_chatgpt_response(licence_key, user_message)
         return jsonify(chat_response), status
+    @app.route('/api/get_chat_history', methods=['GET'])
+    @jwt_required()
+    def get_chat_history():
+        current_user = get_jwt_identity()
+        response, status = get_conversation_by_user(current_user)
+        return jsonify(response), status
+
+

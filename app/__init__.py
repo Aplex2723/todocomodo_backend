@@ -8,7 +8,7 @@ def create_app():
     app = Flask(__name__)
 
     # Enabling cors
-    CORS(app)
+    CORS(app, resources={r"/*": {"origins": "*"}})
     app.config.from_object(Config)
     
     # Inicializar JWT
