@@ -144,6 +144,19 @@ def get_conversation_by_user(username):
         logging.error(f'Error getting messages for {username}: {str(e)}')
         return {'error': f"No se pudo obteneer los mensajes: {str(e)}"}, 500
 
+def reset_chat(username):
+    table_client = table_service_client.get_table_client(Config.TABLE_NAME)
+    try:
+        user_entity = table_client.get_entity(partition_key='users', row_key=username)
+        previous_session_id = user_entity.get("last_session_id", '')
+        user_entity['last_session_id'] = ''
+        logging.info(f"User entity: {user_entity}")
+        table_client.upsert_entity(user_entity)
+        logging.info(f'We were able to reset prev session id {previous_session_id}')
+        return "Session ID successfully deleted", 200
+    except Exception as e:
+        logging.error(f'Error getting messages for {username}: {str(e)}')
+        return {'error': f"No se pudo obteneer los mensajes: {str(e)}"}, 500 
 
 def save_message_to_table(session_id, user_message, bot_response, metadata = None):
     table_client = table_service_client.get_table_client(table_name=Config.CHAT_TABLE_NAME)

@@ -1,6 +1,6 @@
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identity
-from .services import register_user, login_user, get_user_licence_key, save_user_licence_key, get_chatgpt_response, get_conversation_by_user
+from .services import register_user, login_user, get_user_licence_key, save_user_licence_key, get_chatgpt_response, get_conversation_by_user, reset_chat
 
 def register_routes(app):
     @app.route('/api/register', methods=['POST'])
@@ -73,4 +73,9 @@ def register_routes(app):
         response, status = get_conversation_by_user(current_user)
         return jsonify(response), status
 
-
+    @app.route('/api/reset-chat', methods=['POST'])
+    @jwt_required()
+    def reset_chat_route():
+        current_user = get_jwt_identity()
+        response, status = reset_chat(current_user)
+        return jsonify(response), status
