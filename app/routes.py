@@ -79,3 +79,6 @@ def register_routes(app):
         current_user = get_jwt_identity()
         response, status = reset_chat(current_user)
         return jsonify(response), status
+    @app.route('/api/hello', methods=['GET'], strict_slashes=False)
+    def hello_world():
+        return jsonify({'message': 'Hello, World!'}), 200
