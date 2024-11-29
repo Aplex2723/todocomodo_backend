@@ -32,7 +32,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: registry1docker.azurecr.io/${{ secrets.AZURE_CONTAINER_REGISTRY_USERNAME }}/todocopilot:${{ github.sha }}
+          tags: registry1docker.azurecr.io/todocopilot:latest
           file: ./Dockerfile
 
   deploy:
@@ -50,4 +50,4 @@ jobs:
           app-name: ${{ secrets.AZURE_WEB_APP_NAME }}
           slot-name: 'production'
           publish-profile: ${{ secrets.AZURE_WEB_APP_PUBLISH_PROFILE }}
-          tags: registry1docker.azurecr.io/${{ secrets.AZURE_CONTAINER_REGISTRY_USERNAME }}/todocopilot:${{ github.sha }}
+          tags: registry1docker.azurecr.io/todocopilot:latest
