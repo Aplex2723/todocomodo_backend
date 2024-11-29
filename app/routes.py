@@ -81,4 +81,5 @@ def register_routes(app):
         return jsonify(response), status
     @app.route('/api/hello', methods=['GET'], strict_slashes=False)
     def hello_world():
-        return jsonify({'message': 'Hello, World!'}), 200
+        print("Hello world")
+        return jsonify({'message': 'Hello, World!'}), 202
