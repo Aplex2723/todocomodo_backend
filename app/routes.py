@@ -4,13 +4,13 @@ from .services import register_user, login_user, get_user_licence_key, save_user
 
 def register_routes(app):
     @app.route('/api/register', methods=['POST'])
-    def register():
+    def register_post():
         data = request.get_json()
         response, status = register_user(data)
         return jsonify(response), status
 
     @app.route('/api/login', methods=['POST'])
-    def login():
+    def login_post():
         data = request.get_json()
         response, status = login_user(data)
         return jsonify(response), status
