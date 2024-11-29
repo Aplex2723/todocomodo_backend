@@ -139,7 +139,7 @@ def get_conversation_by_user(username):
         entities = table_client.query_entities(f"PartitionKey eq '{session_id}'")
         logging.info(f'We were able to get {username} user messages')
         return [{"user_message": e["UserMessage"], "bot_response": e["BotResponse"], "timestamp": e.get("Timestamp"), "metadata": e.get("metadata")}
-                for e in entities], 200
+                for e in entities], 201
     except Exception as e:
         logging.error(f'Error getting messages for {username}: {str(e)}')
         return {'error': f"No se pudo obteneer los mensajes: {str(e)}"}, 500
